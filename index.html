@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETH 복권 게임</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+    <style>
+        /* ══════════════════════════════════════════
+           CSS 변수 (테마)
+           ══════════════════════════════════════════ */
+        :root {
+            --bg:          #0d1117;
+            --bg-card:     #161b22;
+            --bg-hover:    #1c2129;
+            --border:      #30363d;
+            --text:        #e6edf3;
+            --text-dim:    #8b949e;
+            --gold:        #f0b90b;
+            --gold-dim:    #f0b90b33;
+            --green:       #3fb950;
+            --green-dim:   #3fb95022;
+            --red:         #f85149;
+            --blue:        #58a6ff;
+            --radius:      12px;
+            --radius-sm:   8px;
+        }
+
+        /* ══════════════════════════════════════════
+           리셋 & 기본
+           ══════════════════════════════════════════ */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        /* ══════════════════════════════════════════
+           헤더
+           ══════════════════════════════════════════ */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        .wallet-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .network-badge {
+            background: var(--green-dim);
+            color: var(--green);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+            display: none;
+        }
+        .network-badge.show { display: inline-block; }
+        .wallet-addr {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            display: none;
+        }
+        .wallet-addr.show { display: inline-block; }
+
+        #connectBtn {
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        #connectBtn:hover { opacity: 0.85; }
+        #connectBtn.connected {
+            background: var(--border);
+            cursor: default;
+        }
+
+        /* ══════════════════════════════════════════
+           카드 (공통)
+           ══════════════════════════════════════════ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+        .card h3 {
+            font-size: 1rem;
+            margin-bottom: 16px;
+            color: var(--text-dim);
+        }
+        .hidden { display: none !important; }
+        .label { color: var(--text-dim); font-size: 0.85rem; }
+        .value { font-weight: 700; font-size: 1.1rem; }
+        .gold  { color: var(--gold); }
+
+        /* ══════════════════════════════════════════
+           설정 경고
+           ══════════════════════════════════════════ */
+        .warning {
+            background: #f8514922;
+            border-color: var(--red);
+            color: var(--red);
+            text-align: center;
+            font-weight: 600;
+        }
+
+        /* ══════════════════════════════════════════
+           게임 섹션
+           ══════════════════════════════════════════ */
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .game-header > div {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .game-header > div:last-child { text-align: right; }
+
+        /* 참가자 슬롯 */
+        .players-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .players-header h3 { margin-bottom: 0; }
+        .player-count { font-weight: 700; color: var(--gold); }
+
+        .player-slots {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .slot {
+            flex: 1;
+            min-width: 100px;
+            padding: 14px 8px;
+            border-radius: var(--radius-sm);
+            text-align: center;
+            border: 2px dashed var(--border);
+            background: var(--bg);
+            transition: all 0.3s;
+        }
+        .slot-number {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+        .slot-address {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            word-break: break-all;
+        }
+        .slot.filled {
+            border: 2px solid var(--green);
+            background: var(--green-dim);
+        }
+        .slot.filled .slot-address { color: var(--text); }
+        .slot.mine {
+            border-color: var(--gold);
+            background: var(--gold-dim);
+            box-shadow: 0 0 12px var(--gold-dim);
+        }
+
+        /* 상금 정보 */
+        .prize-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            padding: 12px 0;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        /* 베팅 버튼 */
+        .bet-button {
+            width: 100%;
+            padding: 16px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+            background: linear-gradient(135deg, var(--gold), #e6a800);
+            color: #000;
+        }
+        .bet-button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px var(--gold-dim);
+        }
+        .bet-button:disabled {
+            background: var(--border);
+            color: var(--text-dim);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .bet-button.entered {
+            background: var(--green-dim);
+            border: 2px solid var(--green);
+            color: var(--green);
+        }
+        .bet-button.loading {
+            background: var(--border);
+            color: var(--text-dim);
+            position: relative;
+        }
+
+        /* 내 참가 상태 */
+        .my-status {
+            margin-top: 14px;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+        }
+        .my-status.entered {
+            color: var(--green);
+            background: var(--green-dim);
+        }
+        .my-status.not-entered {
+            color: var(--text-dim);
+        }
+
+        /* ══════════════════════════════════════════
+           히스토리 섹션
+           ══════════════════════════════════════════ */
+        .history-list {
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+        .history-item:hover { background: var(--bg-hover); }
+        .history-round {
+            color: var(--text-dim);
+            font-weight: 600;
+            min-width: 80px;
+        }
+        .history-winner { color: var(--text); flex: 1; text-align: center; }
+        .history-prize  { color: var(--gold); font-weight: 600; min-width: 110px; text-align: right; }
+        .history-me {
+            background: var(--gold-dim);
+        }
+        .empty-state {
+            text-align: center;
+            color: var(--text-dim);
+            padding: 20px 0;
+            font-size: 0.85rem;
+        }
+
+        /* ══════════════════════════════════════════
+           관리자 섹션
+           ══════════════════════════════════════════ */
+        .admin {
+            border-color: var(--gold);
+        }
+        .admin h3 { color: var(--gold); }
+        .admin-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .withdraw-button {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            border: 2px solid var(--gold);
+            color: var(--gold);
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .withdraw-button:hover:not(:disabled) {
+            background: var(--gold);
+            color: #000;
+        }
+        .withdraw-button:disabled {
+            border-color: var(--border);
+            color: var(--text-dim);
+            cursor: not-allowed;
+        }
+
+        /* ══════════════════════════════════════════
+           당첨 모달
+           ══════════════════════════════════════════ */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            animation: fadeIn 0.3s;
+        }
+        .modal-content {
+            background: var(--bg-card);
+            border: 2px solid var(--gold);
+            border-radius: var(--radius);
+            padding: 40px;
+            text-align: center;
+            max-width: 420px;
+            width: 90%;
+            animation: slideUp 0.4s;
+            box-shadow: 0 0 40px var(--gold-dim);
+        }
+        .modal-content h2 {
+            font-size: 1.6rem;
+            margin-bottom: 24px;
+            color: var(--gold);
+        }
+        .winner-address {
+            font-size: 0.9rem;
+            color: var(--text);
+            word-break: break-all;
+            margin-bottom: 8px;
+            padding: 10px;
+            background: var(--bg);
+            border-radius: var(--radius-sm);
+        }
+        .winner-prize {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gold);
+            margin: 16px 0;
+        }
+        .winner-round {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 20px;
+        }
+        .modal-content p {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 20px;
+        }
+        .modal-close-btn {
+            background: var(--gold);
+            color: #000;
+            border: none;
+            padding: 10px 32px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .modal-close-btn:hover { opacity: 0.85; }
+
+        /* ══════════════════════════════════════════
+           토스트 알림
+           ══════════════════════════════════════════ */
+        #toastContainer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 360px;
+        }
+        .toast {
+            padding: 12px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 500;
+            animation: slideIn 0.3s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .toast-success { background: #1a3a1a; color: var(--green); border: 1px solid var(--green); }
+        .toast-error   { background: #3a1a1a; color: var(--red);   border: 1px solid var(--red); }
+        .toast-info    { background: #1a2a3a; color: var(--blue);  border: 1px solid var(--blue); }
+        .toast-fade {
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* ══════════════════════════════════════════
+           스피너
+           ══════════════════════════════════════════ */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--text-dim);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        /* ══════════════════════════════════════════
+           애니메이션
+           ══════════════════════════════════════════ */
+        @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes spin    { to { transform: rotate(360deg); } }
+
+        /* ══════════════════════════════════════════
+           반응형
+           ══════════════════════════════════════════ */
+        @media (max-width: 560px) {
+            .slot { min-width: 80px; padding: 10px 4px; }
+            .game-header { flex-direction: column; gap: 8px; }
+            .game-header > div:last-child { text-align: left; }
+            .prize-info { flex-direction: column; gap: 4px; }
+            header { flex-direction: column; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- ═══ 헤더 ═══ -->
+        <header>
+            <h1>ETH 복권 게임</h1>
+            <div class="wallet-area">
+                <span class="network-badge" id="networkBadge">Sepolia</span>
+                <span class="wallet-addr" id="walletAddr"></span>
+                <button id="connectBtn">지갑 연결</button>
+            </div>
+        </header>
+
+        <!-- ═══ 설정 경고 ═══ -->
+        <div id="setupWarning" class="card warning hidden">
+            CONTRACT_ADDRESS를 설정해주세요.<br>
+            <small>Remix에서 배포 후, index.html 내 CONTRACT_ADDRESS 값을 교체하세요.</small>
+        </div>
+
+        <!-- ═══ MetaMask 미설치 안내 ═══ -->
+        <div id="noMetaMask" class="card warning hidden">
+            MetaMask가 설치되어 있지 않습니다.<br>
+            <small><a href="https://metamask.io" target="_blank" style="color:var(--blue)">metamask.io</a>에서 설치 후 새로고침 하세요.</small>
+        </div>
+
+        <!-- ═══ 게임 섹션 ═══ -->
+        <section id="gameSection" class="card">
+            <div class="game-header">
+                <div>
+                    <span class="label">라운드</span>
+                    <span class="value" id="roundNumber">#-</span>
+                </div>
+                <div>
+                    <span class="label">잭팟</span>
+                    <span class="value gold" id="jackpot">0 ETH</span>
+                </div>
+            </div>
+
+            <div class="players-header">
+                <h3>참가자</h3>
+                <span class="player-count"><span id="playerCount">0</span> / 5</span>
+            </div>
+            <div id="playerSlots" class="player-slots"></div>
+
+            <div class="prize-info">
+                <div>당첨금 <span class="gold">90%</span> = <span id="prizeAmount">0.0045 ETH</span></div>
+                <div>수수료 10% = <span id="feeAmount">0.0005 ETH</span></div>
+            </div>
+
+            <button id="betBtn" class="bet-button" disabled>지갑을 연결하세요</button>
+
+            <div id="myStatus" class="my-status hidden"></div>
+        </section>
+
+        <!-- ═══ 히스토리 ═══ -->
+        <section id="historySection" class="card">
+            <h3>당첨 히스토리</h3>
+            <div id="historyList" class="history-list">
+                <p class="empty-state">아직 당첨 기록이 없습니다</p>
+            </div>
+        </section>
+
+        <!-- ═══ 관리자 패널 ═══ -->
+        <section id="adminSection" class="card admin hidden">
+            <h3>관리자 패널</h3>
+            <div class="admin-info">
+                <span class="label">누적 수수료</span>
+                <span class="value gold" id="accFees">0 ETH</span>
+            </div>
+            <button id="withdrawBtn" class="withdraw-button">수수료 출금</button>
+        </section>
+    </div>
+
+    <!-- ═══ 당첨 모달 ═══ -->
+    <div id="winnerModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>당첨자 발생!</h2>
+            <div class="winner-address" id="winnerAddress"></div>
+            <div class="winner-prize" id="winnerPrize"></div>
+            <div class="winner-round" id="winnerRound"></div>
+            <p>다음 라운드가 자동으로 시작됩니다</p>
+            <button class="modal-close-btn" id="modalCloseBtn">확인</button>
+        </div>
+    </div>
+
+    <!-- ═══ 토스트 컨테이너 ═══ -->
+    <div id="toastContainer"></div>
+
+    <script>
+    (function() {
+        'use strict';
+
+        // ═════════════════════════════════════════════
+        // 설정
+        // ═════════════════════════════════════════════
+
+        // ★ 배포 후 이 값을 실제 컨트랙트 주소로 교체하세요
+        const CONTRACT_ADDRESS = "0xcB3A21CDF1D2D25C196e096b517Cc0aD3F2018A0";
+
+        const SEPOLIA_CHAIN_ID = "0xaa36a7"; // 11155111
+
+        // ethers.js 인간 판독형 ABI
+        const ABI = [
+            "function enter() external payable",
+            "function withdrawFees() external",
+            "function getPlayerCount() external view returns (uint256)",
+            "function getPlayers() external view returns (address[])",
+            "function getJackpot() external view returns (uint256)",
+            "function isPlayerEntered(address) external view returns (bool)",
+            "function getAccumulatedFees() external view returns (uint256)",
+            "function getRoundNumber() external view returns (uint256)",
+            "function owner() external view returns (address)",
+            "event PlayerEntered(address indexed player, uint256 indexed roundNumber, uint256 playerCount)",
+            "event WinnerSelected(address indexed winner, uint256 prize, uint256 indexed roundNumber)",
+            "event FeesWithdrawn(address indexed to, uint256 amount)"
+        ];
+
+        // ═════════════════════════════════════════════
+        // 상태
+        // ═════════════════════════════════════════════
+        let provider = null;
+        let signer   = null;
+        let contract = null;
+        let userAddress = null;
+        let isOwner  = false;
+        let isBetting = false;
+
+        // ═════════════════════════════════════════════
+        // DOM 참조
+        // ═════════════════════════════════════════════
+        const $ = (id) => document.getElementById(id);
+
+        // ═════════════════════════════════════════════
+        // 초기화
+        // ═════════════════════════════════════════════
+        window.addEventListener('load', init);
+
+        function init() {
+            // 컨트랙트 주소 확인
+            if (CONTRACT_ADDRESS === "YOUR_CONTRACT_ADDRESS_HERE") {
+                $('setupWarning').classList.remove('hidden');
+            }
+
+            // MetaMask 확인
+            if (!window.ethereum) {
+                $('noMetaMask').classList.remove('hidden');
+                renderSlots([], null);
+                return;
+            }
+
+            // 계정/체인 변경 감지
+            window.ethereum.on('accountsChanged', handleAccountsChanged);
+            window.ethereum.on('chainChanged', () => window.location.reload());
+
+            // 이미 연결된 계정이 있는지 확인
+            window.ethereum.request({ method: 'eth_accounts' })
+                .then(accounts => {
+                    if (accounts.length > 0) connectWallet();
+                    else renderSlots([], null);
+                });
+
+            // 이벤트 바인딩
+            $('connectBtn').addEventListener('click', connectWallet);
+            $('betBtn').addEventListener('click', enterLottery);
+            $('withdrawBtn').addEventListener('click', withdrawFees);
+            $('modalCloseBtn').addEventListener('click', closeWinnerModal);
+            $('winnerModal').addEventListener('click', function(e) {
+                if (e.target === this) closeWinnerModal();
+            });
+        }
+
+        // ═════════════════════════════════════════════
+        // 지갑 연결
+        // ═════════════════════════════════════════════
+        async function connectWallet() {
+            try {
+                // 기존 이벤트 리스너 정리 (계정 전환 시 누수 방지)
+                if (contract) {
+                    contract.removeAllListeners();
+                }
+
+                // Sepolia 네트워크 전환
+                await ensureSepolia();
+
+                provider = new ethers.BrowserProvider(window.ethereum);
+                signer   = await provider.getSigner();
+                userAddress = (await signer.getAddress()).toLowerCase();
+
+                contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+                // owner 확인
+                const owner = (await contract.owner()).toLowerCase();
+                isOwner = (owner === userAddress);
+
+                // UI 갱신
+                updateWalletUI();
+                await loadState();
+                await loadHistory();
+                setupEventListeners();
+
+            } catch (err) {
+                if (err.code === 4001) {
+                    showToast('지갑 연결을 거부했습니다', 'error');
+                } else {
+                    showToast('지갑 연결 실패: ' + extractMsg(err), 'error');
+                }
+            }
+        }
+
+        async function ensureSepolia() {
+            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            if (chainId === SEPOLIA_CHAIN_ID) return;
+
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: SEPOLIA_CHAIN_ID }]
+                });
+            } catch (err) {
+                if (err.code === 4902) {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: SEPOLIA_CHAIN_ID,
+                            chainName: 'Sepolia Testnet',
+                            nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                            rpcUrls: ['https://rpc.sepolia.org'],
+                            blockExplorerUrls: ['https://sepolia.etherscan.io']
+                        }]
+                    });
+                } else {
+                    throw err;
+                }
+            }
+        }
+
+        function handleAccountsChanged(accounts) {
+            if (accounts.length === 0) {
+                // 연결 해제
+                userAddress = null;
+                isOwner = false;
+                updateWalletUI();
+                renderSlots([], null);
+                updateBetButton(false);
+                $('adminSection').classList.add('hidden');
+                $('myStatus').classList.add('hidden');
+            } else {
+                connectWallet();
+            }
+        }
+
+        function updateWalletUI() {
+            const btn  = $('connectBtn');
+            const addr = $('walletAddr');
+            const badge = $('networkBadge');
+
+            if (userAddress) {
+                btn.textContent = shortenAddr(userAddress);
+                btn.classList.add('connected');
+                addr.textContent = '';
+                addr.classList.remove('show');
+                badge.classList.add('show');
+            } else {
+                btn.textContent = '지갑 연결';
+                btn.classList.remove('connected');
+                addr.classList.remove('show');
+                badge.classList.remove('show');
+            }
+        }
+
+        // ═════════════════════════════════════════════
+        // 컨트랙트 상태 로드
+        // ═════════════════════════════════════════════
+        async function loadState() {
+            if (!contract) return;
+
+            try {
+                const [playerCount, players, jackpot, roundNumber, entered, fees] = await Promise.all([
+                    contract.getPlayerCount(),
+                    contract.getPlayers(),
+                    contract.getJackpot(),
+                    contract.getRoundNumber(),
+                    contract.isPlayerEntered(userAddress),
+                    contract.getAccumulatedFees()
+                ]);
+
+                const count = Number(playerCount);
+                const round = Number(roundNumber);
+                const jackpotWei = jackpot;
+                const feeWei = fees;
+
+                // 라운드 & 잭팟
+                $('roundNumber').textContent = '#' + round;
+                $('jackpot').textContent = formatEth(jackpotWei) + ' ETH';
+
+                // 참가자 수
+                $('playerCount').textContent = count;
+
+                // 상금 계산
+                const fullPot = ethers.parseEther("0.005");
+                $('prizeAmount').textContent = formatEth(fullPot * 90n / 100n) + ' ETH';
+                $('feeAmount').textContent   = formatEth(fullPot * 10n / 100n) + ' ETH';
+
+                // 참가자 슬롯
+                renderSlots(players.map(a => a.toLowerCase()), userAddress);
+
+                // 내 참가 상태
+                updateMyStatus(entered);
+
+                // 베팅 버튼
+                updateBetButton(entered);
+
+                // 관리자 패널
+                if (isOwner) {
+                    $('adminSection').classList.remove('hidden');
+                    $('accFees').textContent = formatEth(feeWei) + ' ETH';
+                    $('withdrawBtn').disabled = (feeWei === 0n);
+                } else {
+                    $('adminSection').classList.add('hidden');
+                }
+
+            } catch (err) {
+                showToast('상태 로딩 실패: ' + extractMsg(err), 'error');
+            }
+        }
+
+        // ═════════════════════════════════════════════
+        // 베팅
+        // ═════════════════════════════════════════════
+        async function enterLottery() {
+            if (!signer || isBetting) return;
+
+            isBetting = true;
+            const btn = $('betBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>트랜잭션 처리중...';
+            btn.classList.add('loading');
+
+            try {
+                const tx = await contract.enter({ value: ethers.parseEther("0.001") });
+                showToast('트랜잭션 전송 완료. 블록 확인 대기중...', 'info');
+                await tx.wait();
+                showToast('베팅 성공!', 'success');
+            } catch (err) {
+                handleTxError(err);
+            } finally {
+                isBetting = false;
+                btn.classList.remove('loading');
+                await loadState();
+            }
+        }
+
+        // ═════════════════════════════════════════════
+        // 수수료 출금
+        // ═════════════════════════════════════════════
+        async function withdrawFees() {
+            if (!signer || !isOwner) return;
+
+            const btn = $('withdrawBtn');
+            btn.disabled = true;
+            btn.textContent = '처리중...';
+
+            try {
+                const tx = await contract.withdrawFees();
+                showToast('출금 트랜잭션 전송됨...', 'info');
+                await tx.wait();
+                showToast('수수료 출금 완료!', 'success');
+            } catch (err) {
+                handleTxError(err);
+            } finally {
+                btn.textContent = '수수료 출금';
+                await loadState();
+            }
+        }
+
+        // ═════════════════════════════════════════════
+        // 히스토리 로드 (이벤트 로그에서)
+        // ═════════════════════════════════════════════
+        async function loadHistory() {
+            if (!contract) return;
+
+            try {
+                const events = await contract.queryFilter("WinnerSelected");
+                const list = $('historyList');
+
+                if (events.length === 0) {
+                    list.innerHTML = '<p class="empty-state">아직 당첨 기록이 없습니다</p>';
+                    return;
+                }
+
+                // 최신순 정렬
+                events.reverse();
+                list.innerHTML = '';
+
+                for (const ev of events) {
+                    const winner = ev.args[0].toLowerCase();
+                    const prize  = ev.args[1];
+                    const round  = Number(ev.args[2]);
+                    const isMe   = userAddress && winner === userAddress;
+
+                    const item = document.createElement('div');
+                    item.className = 'history-item' + (isMe ? ' history-me' : '');
+                    item.innerHTML = `
+                        <span class="history-round">라운드 #${round}</span>
+                        <span class="history-winner">${shortenAddr(winner)}${isMe ? ' (나)' : ''}</span>
+                        <span class="history-prize">${formatEth(prize)} ETH</span>
+                    `;
+                    list.appendChild(item);
+                }
+            } catch (err) {
+                // 히스토리 로딩 실패는 조용히 처리
+                console.error('History load error:', err);
+            }
+        }
+
+        // ═════════════════════════════════════════════
+        // 실시간 이벤트 구독
+        // ═════════════════════════════════════════════
+        function setupEventListeners() {
+            if (!contract) return;
+
+            // 기존 리스너 제거 (중복 방지)
+            contract.removeAllListeners();
+
+            // 참가자 입장 이벤트
+            contract.on("PlayerEntered", (player, roundNumber, playerCount, event) => {
+                showToast(
+                    `새 참가자: ${shortenAddr(player)} (${playerCount}/5)`,
+                    'info'
+                );
+                loadState();
+            });
+
+            // 당첨자 선정 이벤트
+            contract.on("WinnerSelected", (winner, prize, roundNumber, event) => {
+                showWinnerModal(winner, prize, Number(roundNumber));
+                loadState();
+                loadHistory();
+            });
+
+            // 수수료 출금 이벤트
+            contract.on("FeesWithdrawn", (to, amount, event) => {
+                if (isOwner) {
+                    showToast(`수수료 ${formatEth(amount)} ETH 출금 완료`, 'success');
+                }
+                loadState();
+            });
+        }
+
+        // ═════════════════════════════════════════════
+        // UI 렌더링 헬퍼
+        // ═════════════════════════════════════════════
+
+        function renderSlots(players, myAddr) {
+            const container = $('playerSlots');
+            container.innerHTML = '';
+
+            for (let i = 0; i < 5; i++) {
+                const slot = document.createElement('div');
+                const filled = i < players.length;
+                const isMine = filled && myAddr && players[i] === myAddr;
+
+                slot.className = 'slot' + (filled ? ' filled' : '') + (isMine ? ' mine' : '');
+                slot.innerHTML = `
+                    <div class="slot-number">#${i + 1}</div>
+                    <div class="slot-address">${filled ? shortenAddr(players[i]) : '대기중'}</div>
+                `;
+                container.appendChild(slot);
+            }
+        }
+
+        function updateMyStatus(entered) {
+            const el = $('myStatus');
+            if (!userAddress) {
+                el.classList.add('hidden');
+                return;
+            }
+            el.classList.remove('hidden');
+            if (entered) {
+                el.className = 'my-status entered';
+                el.textContent = '이번 라운드에 참가중입니다';
+            } else {
+                el.className = 'my-status not-entered';
+                el.textContent = '아직 참가하지 않았습니다';
+            }
+        }
+
+        function updateBetButton(entered) {
+            const btn = $('betBtn');
+            if (!userAddress) {
+                btn.disabled = true;
+                btn.textContent = '지갑을 연결하세요';
+                btn.className = 'bet-button';
+                return;
+            }
+            if (entered) {
+                btn.disabled = true;
+                btn.textContent = '참가 완료';
+                btn.className = 'bet-button entered';
+            } else {
+                btn.disabled = false;
+                btn.textContent = '베팅하기 0.001 ETH';
+                btn.className = 'bet-button';
+            }
+        }
+
+        // ═════════════════════════════════════════════
+        // 당첨 모달
+        // ═════════════════════════════════════════════
+        function showWinnerModal(winner, prize, round) {
+            const winnerLower = winner.toLowerCase();
+            const isMe = userAddress && winnerLower === userAddress;
+
+            $('winnerAddress').textContent = isMe ? winner + ' (나!)' : winner;
+            $('winnerPrize').textContent = formatEth(prize) + ' ETH';
+            $('winnerRound').textContent = '라운드 #' + round;
+
+            if (isMe) {
+                $('winnerModal').querySelector('h2').textContent = '축하합니다! 당첨!';
+            } else {
+                $('winnerModal').querySelector('h2').textContent = '당첨자 발생!';
+            }
+
+            $('winnerModal').classList.remove('hidden');
+        }
+
+        function closeWinnerModal() {
+            $('winnerModal').classList.add('hidden');
+        }
+
+        // ═════════════════════════════════════════════
+        // 토스트 알림
+        // ═════════════════════════════════════════════
+        function showToast(message, type) {
+            const container = $('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast toast-' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('toast-fade');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // ═════════════════════════════════════════════
+        // 에러 처리
+        // ═════════════════════════════════════════════
+        function handleTxError(err) {
+            if (err.code === 'ACTION_REJECTED' || err.code === 4001) {
+                showToast('트랜잭션을 거부했습니다', 'error');
+                return;
+            }
+            const msg = extractMsg(err);
+            if (msg.includes('Must send exactly'))     showToast('참가비가 정확히 0.001 ETH여야 합니다', 'error');
+            else if (msg.includes('Already entered'))   showToast('이미 이번 라운드에 참가했습니다', 'error');
+            else if (msg.includes('Round is full'))     showToast('라운드가 마감되었습니다', 'error');
+            else if (msg.includes('insufficient funds')) showToast('잔액이 부족합니다', 'error');
+            else if (msg.includes('No fees'))           showToast('출금할 수수료가 없습니다', 'error');
+            else showToast('트랜잭션 실패: ' + msg, 'error');
+        }
+
+        function extractMsg(err) {
+            if (err.reason) return err.reason;
+            if (err.data && err.data.message) return err.data.message;
+            if (err.message) {
+                // revert 메시지 추출 시도
+                const match = err.message.match(/reason="([^"]+)"/);
+                if (match) return match[1];
+                // 너무 긴 메시지 자르기
+                return err.message.length > 80 ? err.message.slice(0, 80) + '...' : err.message;
+            }
+            return '알 수 없는 오류';
+        }
+
+        // ═════════════════════════════════════════════
+        // 유틸리티
+        // ═════════════════════════════════════════════
+        function shortenAddr(addr) {
+            if (!addr) return '';
+            return addr.slice(0, 6) + '...' + addr.slice(-4);
+        }
+
+        function formatEth(wei) {
+            return ethers.formatEther(wei);
+        }
+
+    })();
+    </script>
+</body>
+</html>
